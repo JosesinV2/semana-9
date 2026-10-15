@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <title>Gestor de colas</title>
+
+    <link
+        href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet"
+    >
+</head>
+
+<body class="bg-light">
+
+    <nav class="navbar navbar-dark bg-dark">
+        <div class="container">
+            <span class="navbar-brand mb-0 h1">Gestor de colas</span>
+            <span class="badge text-bg-secondary">FIFO</span>
+        </div>
+    </nav>
+
+    <main class="container py-4 py-md-5">
+
+        <div class="row justify-content-center">
+            <div class="col-12 col-lg-9 col-xl-8">
+
+                <div class="mb-4">
+                    <h1 class="h3 fw-bold">Registro de personas</h1>
+                    <p class="text-secondary mb-0">
+                        Agrega nombres manualmente o utiliza el micrófono.
+                        Las personas se atienden en el orden en que ingresan.
+                    </p>
+                </div>
+
+                <div class="card border-0 shadow-sm mb-4">
+                    <div class="card-body p-4">
+
+                        <h2 class="h5 mb-3">Agregar a la cola</h2>
+
+                        <form id="formularioNombre">
+                            <label for="nombre" class="form-label">
+                                Nombre y apellidos
+                            </label>
+
+                            <div class="input-group mb-2">
+                                <input
+                                    type="text"
+                                    class="form-control"
+                                    id="nombre"
+                                    name="nombre"
+                                    placeholder="Ej. José Adán"
+                                    maxlength="60"
+                                    autocomplete="name"
+                                    required
+                                >
+
+                                <button
+                                    class="btn btn-outline-primary"
+                                    type="button"
+                                    id="botonMicrofono"
+                                    aria-label="Dictar nombre con el micrófono"
+                                >
+                                    Usar micrófono
+                                </button>
+                            </div>
+
+                            <div class="form-text mb-3">
+                                Escribe o dicta un nombre de hasta cuatro
+                                palabras. Puedes revisar el texto reconocido
+                                antes de registrarlo.
+                            </div>
+
+                            <div
+                                id="estadoMicrofono"
+                                class="small text-secondary mb-3"
+                                role="status"
+                                aria-live="polite"
+                            ></div>
+
+                            <div class="d-grid">
+                                <button
+                                    type="submit"
+                                    class="btn btn-primary"
+                                    id="botonAgregar"
+                                >
+                                    Agregar persona
+                                </button>
+                            </div>
+                        </form>
+
+                    </div>
+                </div>
+
+                <div class="card border-0 shadow-sm">
+                    <div class="card-body p-4">
+
+                        <div class="d-flex justify-content-between
+                                    align-items-center gap-3 mb-3">
+                            <div>
+                                <h2 class="h5 mb-1">Cola de espera</h2>
+                                <p class="text-secondary small mb-0">
+                                    Primero en entrar, primero en salir.
+                                </p>
+                            </div>
+
+                            <span
+                                class="badge text-bg-primary fs-6"
+                                id="contador"
+                                aria-live="polite"
+                            >
+                                0 personas
+                            </span>
+                        </div>
+
+                        <div
+                            id="mensaje"
+                            class="alert d-none"
+                            role="status"
+                            aria-live="polite"
+                        ></div>
+
+                        <div
+                            id="indicadorCarga"
+                            class="text-secondary small mb-3 d-none"
+                            role="status"
+                        >
+                            Actualizando cola...
+                        </div>
+
+                        <ol
+                            id="listaCola"
+                            class="list-group list-group-numbered mb-4"
+                            aria-label="Personas en espera"
+                        ></ol>
+
+                        <div
+                            id="colaVacia"
+                            class="text-center border rounded p-4 mb-4"
+                        >
+                            <h3 class="h6">No hay personas en espera</h3>
+                            <p class="text-secondary small mb-0">
+                                Agrega un nombre para comenzar.
+                            </p>
+                        </div>
+
+                        <div class="d-flex flex-column flex-sm-row gap-2">
+                            <button
+                                type="button"
+                                class="btn btn-success flex-fill"
+                                id="botonDesencolar"
+                                disabled
+                            >
+                                Atender siguiente
+                            </button>
+
+                            <button
+                                type="button"
+                                class="btn btn-outline-danger"
+                                id="botonVaciar"
+                                disabled
+                            >
+                                Vaciar cola
+                            </button>
+                        </div>
+
+                        <p class="text-secondary small mt-3 mb-0">
+                            La primera persona de la lista será atendida
+                            primero. Los datos se mantienen mientras el
+                            servidor está ejecutándose.
+                        </p>
+
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const formulario = document.getElementById("formularioNombre");
+        const campoNombre = document.getElementById("nombre");
+        const listaCola = document.getElementById("listaCola");
+        const contador = document.getElementById("contador");
+        const colaVacia = document.getElementById("colaVacia");
+        const mensaje = document.getElementById("mensaje");
+        const indicadorCarga = document.getElementById("indicadorCarga");
+
+        const botonAgregar = document.getElementById("botonAgregar");
+        const botonDesencolar = document.getElementById("botonDesencolar");
+        const botonVaciar = document.getElementById("botonVaciar");
+        const botonMicrofono = document.getElementById("botonMicrofono");
+        const estadoMicrofono = document.getElementById("estadoMicrofono");
+
+        let cantidadPersonas = 0;
+        let operacionEnCurso = false;
+
+        function mostrarMensaje(texto, tipo = "success") {
+            mensaje.textContent = texto;
+            mensaje.className = `alert alert-${tipo}`;
+        }
+
+        function ocultarMensaje() {
+            mensaje.textContent = "";
+            mensaje.className = "alert d-none";
+        }
+
+        function actualizarEstadoBotones() {
+            botonAgregar.disabled = operacionEnCurso;
+            botonDesencolar.disabled =
+                operacionEnCurso || cantidadPersonas === 0;
+            botonVaciar.disabled =
+                operacionEnCurso || cantidadPersonas === 0;
+        }
+
+        function mostrarCola(personas) {
+            listaCola.replaceChildren();
+
+            personas.forEach((persona, indice) => {
+                const elemento = document.createElement("li");
+
+                elemento.className =
+                    "list-group-item d-flex justify-content-between " +
+                    "align-items-center gap-3";
+
+                const nombre = document.createElement("span");
+                nombre.textContent = persona;
+
+                elemento.appendChild(nombre);
+
+                if (indice === 0) {
+                    const etiqueta = document.createElement("span");
+                    etiqueta.className = "badge text-bg-success";
+                    etiqueta.textContent = "Siguiente";
+                    elemento.appendChild(etiqueta);
+                }
+
+                listaCola.appendChild(elemento);
+            });
+
+            cantidadPersonas = personas.length;
+
+            contador.textContent =
+                `${cantidadPersonas} ${
+                    cantidadPersonas === 1 ? "persona" : "personas"
+                }`;
+
+            colaVacia.classList.toggle(
+                "d-none",
+                cantidadPersonas !== 0
+            );
+
+            actualizarEstadoBotones();
+        }
+
+        async function solicitar(url, metodo = "GET", datos = null) {
+            const opciones = { method: metodo };
+
+            if (datos !== null) {
+                opciones.headers = {
+                    "Content-Type": "application/json"
+                };
+                opciones.body = JSON.stringify(datos);
+            }
+
+            const respuesta = await fetch(url, opciones);
+            const resultado = await respuesta.json();
+
+            if (!respuesta.ok) {
+                throw new Error(
+                    resultado.error || "No se pudo completar la operación."
+                );
+            }
+
+            return resultado;
+        }
+
+        async function cargarCola() {
+            try {
+                indicadorCarga.classList.remove("d-none");
+
+                const resultado = await solicitar("/api/cola");
+                mostrarCola(resultado.cola);
+            } catch (error) {
+                mostrarMensaje(error.message, "danger");
+            } finally {
+                indicadorCarga.classList.add("d-none");
+            }
+        }
+
+        formulario.addEventListener("submit", async (evento) => {
+            evento.preventDefault();
+
+            if (operacionEnCurso) return;
+
+            const nombre = campoNombre.value.trim();
+
+            if (!nombre) {
+                mostrarMensaje("Escribe un nombre antes de continuar.", "warning");
+                campoNombre.focus();
+                return;
+            }
+
+            operacionEnCurso = true;
+            actualizarEstadoBotones();
+            ocultarMensaje();
+
+            try {
+                const resultado = await solicitar(
+                    "/api/encolar",
+                    "POST",
+                    { nombre }
+                );
+
+                mostrarCola(resultado.cola);
+                mostrarMensaje(resultado.mensaje, "success");
+
+                campoNombre.value = "";
+                campoNombre.focus();
+            } catch (error) {
+                mostrarMensaje(error.message, "danger");
+            } finally {
+                operacionEnCurso = false;
+                actualizarEstadoBotones();
+            }
+        });
+
+        botonDesencolar.addEventListener("click", async () => {
+            if (operacionEnCurso || cantidadPersonas === 0) return;
+
+            operacionEnCurso = true;
+            actualizarEstadoBotones();
+
+            try {
+                const resultado = await solicitar(
+                    "/api/desencolar",
+                    "POST"
+                );
+
+                mostrarCola(resultado.cola);
+                mostrarMensaje(resultado.mensaje, "success");
+            } catch (error) {
+                mostrarMensaje(error.message, "danger");
+            } finally {
+                operacionEnCurso = false;
+                actualizarEstadoBotones();
+            }
+        });
+
+        botonVaciar.addEventListener("click", async () => {
+            if (operacionEnCurso || cantidadPersonas === 0) return;
+
+            const confirmar = window.confirm(
+                "¿Seguro que deseas eliminar todos los nombres de la cola?"
+            );
+
+            if (!confirmar) return;
+
+            operacionEnCurso = true;
+            actualizarEstadoBotones();
+
+            try {
+                const resultado = await solicitar(
+                    "/api/vaciar",
+                    "POST"
+                );
+
+                mostrarCola(resultado.cola);
+                mostrarMensaje(resultado.mensaje, "success");
+            } catch (error) {
+                mostrarMensaje(error.message, "danger");
+            } finally {
+                operacionEnCurso = false;
+                actualizarEstadoBotones();
+            }
+        });
+
+        // Reconocimiento de voz en español.
+        const ReconocimientoVoz =
+            window.SpeechRecognition ||
+            window.webkitSpeechRecognition;
+
+        let reconocimiento = null;
+
+        if (ReconocimientoVoz) {
+            reconocimiento = new ReconocimientoVoz();
+            reconocimiento.lang = "es-NI";
+            reconocimiento.continuous = false;
+            reconocimiento.interimResults = false;
+            reconocimiento.maxAlternatives = 1;
+
+            reconocimiento.onstart = () => {
+                botonMicrofono.disabled = true;
+                estadoMicrofono.textContent =
+                    "Escuchando... di únicamente el nombre y los apellidos.";
+            };
+
+            reconocimiento.onresult = (evento) => {
+                const texto = evento.results[0][0].transcript.trim();
+
+                campoNombre.value = texto;
+                campoNombre.focus();
+
+                estadoMicrofono.textContent =
+                    "Texto reconocido. Revisa el nombre y pulsa Agregar persona.";
+            };
+
+            reconocimiento.onerror = (evento) => {
+                const errores = {
+                    "not-allowed": "Debes permitir el acceso al micrófono.",
+                    "no-speech": "No se detectó voz. Inténtalo de nuevo.",
+                    "audio-capture": "No se encontró un micrófono disponible.",
+                    "network": "El reconocimiento de voz tuvo un problema de conexión."
+                };
+
+                estadoMicrofono.textContent =
+                    errores[evento.error] ||
+                    "No se pudo reconocer la voz. Inténtalo nuevamente.";
+            };
+
+            reconocimiento.onend = () => {
+                botonMicrofono.disabled = false;
+            };
+
+            botonMicrofono.addEventListener("click", () => {
+                estadoMicrofono.textContent = "";
+
+                try {
+                    reconocimiento.start();
+                } catch (error) {
+                    estadoMicrofono.textContent =
+                        "El reconocimiento ya está activo. Espera un momento.";
+                }
+            });
+        } else {
+            botonMicrofono.disabled = true;
+            estadoMicrofono.textContent =
+                "Tu navegador no admite reconocimiento de voz. " +
+                "Puedes escribir el nombre manualmente.";
+        }
+
+        cargarCola();
+    </script>
+
+</body>
+</html>
